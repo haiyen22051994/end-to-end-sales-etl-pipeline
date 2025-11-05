@@ -1,0 +1,138 @@
+version: "3.8"
+
+services:
+  # ======================
+  # PostgreSQL database
+  # ======================
+  postgres:
+    image: postgres:16
+    container_name: pg_main
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  # ======================================================
+  # Run all .sql in ./sql into DB ${OLIST_DB} (auto-create)
+  # ======================================================
+  db-migrator:
+    image: postgres:16
+    container_name: db-migrator
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER}
+      PGDATABASE: ${POSTGRES_DB}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      OLIST_DB: ${OLIST_DB}
+    volumes:
+      - ./sql:/sql:ro
+      - ./scripts:/scripts
+    working_dir: /scripts
+    entrypoint: ["/bin/bash","-lc"]
+    command: "./migrate.sh"
+
+  # =======================================
+  # Airflow one-time init (db + admin user)
+  # =======================================
+  airflow-init:
+   # build: .
+    image: airflow-with-hop:2.9.3
+    container_name: airflow-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env                 # khuyến nghị: đặt các biến _AIRFLOW_WWW_* trong file .env
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        # Migrate (Airflow ≥2.7). Nếu migrate không có, fallback sang init.
+        airflow db migrate || airflow db init
+
+        # Tạo user admin nếu chưa tồn tại (không fail nếu đã có)
+        airflow users create \
+          --role Admin \
+          --username "${_AIRFLOW_WWW_USER_USERNAME}" \
+          --password "${_AIRFLOW_WWW_USER_PASSWORD}" \
+          --firstname "${_AIRFLOW_WWW_USER_FIRSTNAME}" \
+          --lastname "${_AIRFLOW_WWW_USER_LASTNAME}" \
+          --email "${_AIRFLOW_WWW_USER_EMAIL}" \
+          || true
+    restart: "no"
+
+  # ==================
+  # Airflow webserver
+  # ==================
+  airflow-web:
+   # build: .
+    image: airflow-with-hop:2.9.3
+    container_name: airflow-web
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    command:
+      - bash
+      - -lc
+      - |
+        set -e
+        exec airflow webserver
+    ports:
+      - "8080:8080"   # nếu bận port: đổi "8090:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+
+  # =================
+  # Airflow scheduler
+  # =================
+  airflow-sched:
+   # build: .
+    image: airflow-with-hop:2.9.3
+    container_name: airflow-sched
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: ["bash","-lc","exec airflow scheduler"]
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+
+volumes:
+  pgdata:

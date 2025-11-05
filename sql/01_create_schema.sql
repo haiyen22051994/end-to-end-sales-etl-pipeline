@@ -1,0 +1,2 @@
+CREATE SCHEMA IF NOT EXISTS star_schema;
+CREATE SCHEMA IF NOT EXISTS sales_data_raw;

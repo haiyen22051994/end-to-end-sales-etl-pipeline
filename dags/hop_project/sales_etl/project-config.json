@@ -1,0 +1,29 @@
+{
+  "metadataBaseFolder" : "${PROJECT_HOME}/metadata",
+  "unitTestsBasePath" : "${PROJECT_HOME}",
+  "dataSetsCsvFolder" : "${PROJECT_HOME}/datasets",
+  "config" : {
+    "variables": [
+      {
+        "name": "DB_HOST",
+        "value": "localhost"
+      },
+      {
+        "name": "DB_PORT",
+        "value": "5433"
+      },
+      {
+        "name": "DB_NAME",
+        "value": "olist"
+      },
+      {
+        "name": "DB_USER",
+        "value": "postgres"
+      },
+      {
+        "name": "DB_PASS",
+        "value": "postgres"
+      }
+    ]
+  }
+}

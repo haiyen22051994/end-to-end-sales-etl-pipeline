@@ -1,0 +1,13 @@
+{
+  "engineRunConfiguration": {
+    "Local": {
+      "safe_mode": false,
+      "transactional": false
+    }
+  },
+  "virtualPath": "",
+  "defaultSelection": false,
+  "name": "TEST",
+  "description": "",
+  "executionInfoLocationName": ""
+}
